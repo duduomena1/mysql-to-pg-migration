@@ -1,0 +1,18 @@
+{
+    "schema_name": "tatico",
+    "json_name": "metadata.json",
+    "progress_json_name": "progress.json",
+    "bulk_commit": true,
+    "mysql_batch_size": 5000,
+    "excluded_tables": [
+        "logs",
+        "tags",
+        "plate_captures",
+        "plate_captures_old",
+        "captures_2024",
+        "captures_teste",
+        "occurrence_captures_back",
+        "occurrence_captures_backup"
+    ],
+    "postgres_bulk_size": 10000
+}

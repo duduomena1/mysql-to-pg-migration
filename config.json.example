@@ -1,0 +1,9 @@
+{
+  "schema_name": "public",
+  "json_name": "metadata.json",
+  "progress_json_name": "progress.json",
+  "bulk_commit": true,
+  "mysql_batch_size": 10000,
+  "excluded_tables": [],
+  "postgres_bulk_size": 10000
+}

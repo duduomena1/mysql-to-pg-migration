@@ -1,0 +1,617 @@
+/* Reset CSS */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+}
+
+.navbar {
+  background-color: #242323;
+  padding: 10px 0;
+}
+
+.navbar-list {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.navbar-item {
+  display: inline-block;
+}
+
+.navbar-link {
+  display: inline-block;
+  padding: 10px 20px;
+  color: #fff;
+  text-decoration: none;
+}
+
+
+.navbar-link img {
+  width: 50px;
+  height: 50px;
+  margin-bottom: 5px;
+  display: block;
+  margin: 0 auto;
+  filter: invert(100%);
+}
+
+.main_container{
+  background-color: #f2f2f2;
+  display: flex;
+  padding: 20px;
+  min-height: calc(100vh - 60px);  /* Garante altura mínima da tela */
+}
+
+.container_tabs {
+  padding: 20px;
+  min-height: calc(100vh - 100px);  /* Aumentado para ocupar mais espaço */
+  width: calc(70% - 20px); 
+  flex: 1;  /* Permite crescer */
+}
+
+.log_container {
+  background-color: #1e1e1e;
+  width: 100%;
+  min-height: 200px;
+  box-sizing: border-box;
+  overflow: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Log container quando está no grid layout (remover margin-top) */
+.conversion_main .log_container {
+  margin-top: 0;
+}
+
+/* Log container em abas que não usam conversion_main (como configure) */
+.tab-content .log_container:not(.conversion_main .log_container) {
+  margin-top: 20px;
+  max-height: 40vh;
+}
+
+/* Log global - visível em outras abas */
+#global_log_container {
+  display: block;
+}
+
+/* Esconde log global quando aba Tuples está ativa */
+#tuples.active ~ #global_log_container {
+  display: none;
+}
+
+.log {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  padding: 15px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.line {
+  height: 4px;
+  width: 100%;
+}
+
+.pause { background-color: grey; }
+.finish { background-color: green; }
+.error { background-color: red; }
+.processing { background-color: yellow; }
+
+
+
+
+/* Cards */
+
+.card-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start; 
+}
+
+.card {
+  border: 4px solid;
+  border-radius: 8px;
+  padding: 20px;
+  margin-right: 20px;
+  margin-bottom: 20px;
+  max-width: 500px; 
+  display: inline-block;
+  text-align: left; 
+  background-color: #98959518; 
+}
+
+.card-icon {
+  float: left;
+  margin-right: 10px;
+  margin-top: 10px; 
+}
+
+.card-icon img {
+  width: 100px;
+  height: 100px;
+  display: block; 
+  margin: 0 auto; 
+}
+
+.card-content {
+  overflow: hidden;
+}
+
+.card-content h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.card-content p {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.error-message {
+  color: red;
+  font-style: italic;
+  margin-top: 10px; 
+}
+
+
+
+/* Forms */
+
+#configure {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  font-size: 20px;
+  color: #242323;
+  display: block; 
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 300px; 
+  padding: 10px;
+  font-size: 15px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: #242323;
+  color: #fff;
+  font-size: 18px;
+  padding: 10px 18px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: #1e1e1e;
+}
+
+
+/* Conversion - CSS base removido, agora usa grid definido abaixo */
+
+/* Container de logs global - ocupa 70% da coluna direita */
+.global_log_container {
+  grid-row: 1;        /* Primeira linha (70%) */
+  grid-column: 2;     /* Segunda coluna (direita) */
+  background-color: #1e1e1e;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  overflow: auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+/* Container de logs global integrado ao grid - não precisa de configuração específica por aba */
+
+/* Ajuste para telas menores */
+@media (max-width: 1200px) {
+  .global_log_container {
+    width: calc(45% - 20px);
+    height: calc(45vh - 60px);
+  }
+}
+
+/* Layout dividido - coluna esquerda inteira, coluna direita 70%/30% */
+.conversion_main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;  /* 2 colunas iguais - dividido ao meio */
+  grid-template-rows: 7fr 3fr;     /* 70% superior, 30% inferior */
+  gap: 15px;
+  height: calc(100vh - 220px);  /* Altura total menos navbar, padding e botões */
+  min-height: 500px;
+  align-items: stretch;
+  padding: 20px;
+}
+
+/* Todas as abas usam o mesmo layout dividido ao meio */
+
+/* Configuração específica para aba tuples já definida acima */
+
+/* Container global funciona igual em todas as abas */
+
+/* Todas as abas seguem o mesmo padrão de layout dividido ao meio */
+
+/* Grid data - configuração geral */
+.conversion_main .conversion_data {
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Coluna esquerda - ocupa as duas linhas (70% + 30%) em todas as abas */
+.conversion_data {
+  grid-row: span 2;  /* Ocupa as 2 linhas (70% + 30%) */
+  grid-column: 1;    /* Primeira coluna (esquerda) */
+  width: 100%;
+}
+
+/* Container de logs antigas - removido, agora é global */
+
+/* Barra de progresso (conversion_table_data) - apenas para aba tuples */
+#tuples .conversion_table_data {
+  grid-row: 2;       /* Segunda linha (embaixo) */
+  grid-column: 2;    /* Segunda coluna (direita) */
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
+  width: 100%;
+}
+
+/* Para abas que têm conteúdo específico na conversion_table_data, mostrar no grid */
+#indexes .conversion_table_data,
+#sequences .conversion_table_data {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  display: block;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  width: 100%;
+}
+
+/* Para essas abas, precisamos do grid 2x2 */
+#indexes .conversion_main,
+#sequences .conversion_main {
+  grid-template-rows: 1fr 1fr;  /* 2 linhas iguais */
+}
+
+/* Para outras abas sem conteúdo específico, esconder conversion_table_data */
+#connection .conversion_table_data,
+#conversion .conversion_table_data,
+#tables .conversion_table_data,
+#primary-keys .conversion_table_data,
+#constraints .conversion_table_data {
+  display: none;  /* Escondido nas abas sem barra de progresso */
+}
+
+#tuples .grid-container {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Terminal na aba Tuples - Barra de Progresso */
+#tuples #rich_terminal_container {
+  width: 100%;
+  /* max-width: 100%; */
+  /* box-sizing: border-box; */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#tuples .rich-terminal {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  /* padding: 20px; */
+  /* box-sizing: border-box; */
+  height: 100%;
+  overflow-y: auto;
+}
+
+.conversion_table_data {
+  width: 60%;  /* 60% da largura */
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.conversion_table_data_tables {
+  width: 100%;
+  height: 70vh;
+  border-collapse: collapse;
+  box-sizing: border-box;
+  overflow-x: auto; 
+  overflow-y: auto; 
+  display: none;
+}
+
+
+.grid-container {
+  height: 70vh;
+  overflow-y: auto; /* Enable vertical scrollbar */
+  margin-top: 20px;
+}
+
+
+.item {
+  position: relative; 
+  width: 140px;
+  height: 80px;
+ /* border: 1px solid #ccc;*/
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.close-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  color: red;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 2px 5px;
+}
+
+.reset-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  padding: 2px 15px;
+}
+
+.reset-btn img.reset-btn-img {
+  width: 20px; 
+  height: 20px; 
+}
+
+
+
+.item img {
+  width: 50px; /* Adjust the width as needed */
+  height: auto; /* Maintain aspect ratio */
+}
+
+/* table metadata */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+
+.table th {
+  background-color: #f2f2f2;
+}
+
+.table tbody tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+/* Progress bar */
+
+.progress-bar {
+  width: 100%;
+  margin-bottom: 20px;
+  background-color: #f0f0f0; /* Grey background color */
+  padding: 5px; /* Add padding to give space for labels */
+  border: 1px solid #ccc; /* Add border */
+}
+
+.progress {
+  height: 20px;
+  background-color: #666666; /* Yellow progress color */
+}
+
+.label {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.name {
+  font-weight: bold;
+}
+
+.data {
+  font-size: 14px;
+}
+
+/* Rich Terminal - Espelho do terminal no frontend */
+#rich_terminal_container {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.rich-terminal {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;  /* Aumentado de 13px para 14px */
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  height: auto;      /* Altura automática */
+  min-height: 250px; /* Mínimo maior */
+  max-height: none;  /* Sem limite máximo */
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;  /* Esconder scroll horizontal */
+  white-space: pre-wrap;  /* Mudado de pre para pre-wrap */
+  box-sizing: border-box;
+  word-wrap: break-word;
+}
+
+.rich-terminal .terminal-output {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;  /* Aumentado de 1.5 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Cores ANSI para o terminal */
+.ansi-black { color: #000000; }
+.ansi-red { color: #cd3131; }
+.ansi-green { color: #0dbc79; }
+.ansi-yellow { color: #e5e510; }
+.ansi-blue { color: #2472c8; }
+.ansi-magenta { color: #bc3fbc; }
+.ansi-cyan { color: #11a8cd; }
+.ansi-white { color: #e5e5e5; }
+
+.ansi-bright-black { color: #666666; }
+.ansi-bright-red { color: #f14c4c; }
+.ansi-bright-green { color: #23d18b; }
+.ansi-bright-yellow { color: #f5f543; }
+.ansi-bright-blue { color: #3b8eea; }
+.ansi-bright-magenta { color: #d670d6; }
+.ansi-bright-cyan { color: #29b8db; }
+.ansi-bright-white { color: #ffffff; }
+
+.ansi-bold {
+  font-weight: bold;
+}
+
+/* Scrollbar customizada para o terminal */
+.rich-terminal::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.rich-terminal::-webkit-scrollbar-track {
+  background: #2d2d30;
+}
+
+.rich-terminal::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 5px;
+}
+
+.rich-terminal::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* Scrollbar customizada para o log container */
+.log_container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.log_container::-webkit-scrollbar-track {
+  background: #2d2d30;
+}
+
+.log_container::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.log_container::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* Rich Progress Container antigo - mantido comentado caso necessário
+.rich-progress-container {
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.rich-progress-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196f3;
+  border-radius: 4px;
+}
+
+.rich-progress-info.success {
+  background-color: #e8f5e9;
+  border-left-color: #4caf50;
+}
+
+.rich-progress-info h3 {
+  margin: 0 0 10px 0;
+  color: #1976d2;
+}
+
+.rich-progress-info.success h3 {
+  color: #2e7d32;
+}
+
+.rich-progress-info p {
+  margin: 5px 0;
+  color: #555;
+}
+
+#current_table_info {
+  margin-top: 20px;
+}
+
+#current_table_info h4 {
+  margin-bottom: 10px;
+  color: #333;
+}
+*/

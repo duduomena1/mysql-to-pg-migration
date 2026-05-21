@@ -1,0 +1,9 @@
+{
+    "tables": [
+        {
+            "table_name": "dados_veiculos",
+            "last_migrated_block": 225,
+            "fully_migrated": true
+        }
+    ]
+}

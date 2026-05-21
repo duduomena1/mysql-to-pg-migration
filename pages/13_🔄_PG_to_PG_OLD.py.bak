@@ -1,0 +1,1479 @@
+"""
+🔄 PostgreSQL to PostgreSQL Migration Page
+Complete migration from one PostgreSQL database to another
+"""
+
+import streamlit as st
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from dbmigrator.data_migration.database_connections.postgresql_connection import PostgreSQLConnection
+from dbmigrator.configuration_management.db_credentials import DBCredentials
+from dotenv import load_dotenv
+
+# Carregar .env
+load_dotenv()
+
+st.title("🔄 PostgreSQL → PostgreSQL Migration")
+
+st.info("""
+**Complete database migration between two PostgreSQL instances**
+
+This feature allows you to:
+- Migrate schema (tables, constraints, indexes)
+- Migrate data with progress tracking
+- Handle duplicates gracefully
+- Synchronize sequences automatically
+""")
+
+# Inicializar configurações se não existirem
+if 'pg_source_config' not in st.session_state:
+    st.session_state.pg_source_config = {
+        'host': '',
+        'port': '5432',
+        'database': '',
+        'user': 'postgres',
+        'password': '',
+        'schema': 'public'
+    }
+
+if 'pg_dest_config' not in st.session_state:
+    st.session_state.pg_dest_config = {
+        'host': '',
+        'port': '5432',
+        'database': '',
+        'user': 'postgres',
+        'password': '',
+        'schema': 'public'
+    }
+
+# Seção de Conexões
+st.markdown("---")
+st.subheader("🔌 Database Connections")
+
+col1, col2 = st.columns(2)
+
+# PostgreSQL Source (Origem)
+with col1:
+    st.markdown("### 📤 Source Database (Origin)")
+    
+    with st.expander("⚙️ Connection Settings", expanded=True):
+        pg_src_host = st.text_input("Host", value=st.session_state.pg_source_config['host'], key="pg_src_host")
+        pg_src_port = st.number_input("Port", value=int(st.session_state.pg_source_config['port']), min_value=1, max_value=65535, key="pg_src_port")
+        pg_src_database = st.text_input("Database", value=st.session_state.pg_source_config['database'], key="pg_src_db")
+        pg_src_user = st.text_input("User", value=st.session_state.pg_source_config['user'], key="pg_src_user")
+        pg_src_password = st.text_input("Password", value=st.session_state.pg_source_config['password'], type="password", key="pg_src_pass")
+        pg_src_schema = st.text_input("Schema", value=st.session_state.pg_source_config['schema'], key="pg_src_schema")
+    
+    if st.button("🔍 Test Source Connection", key="test_src", width="stretch"):
+        try:
+            credentials = DBCredentials(
+                database=pg_src_database,
+                user=pg_src_user,
+                password=pg_src_password,
+                host=pg_src_host,
+                port=str(pg_src_port)
+            )
+            
+            with st.spinner("Testing connection..."):
+                conn = PostgreSQLConnection(credentials)
+                conn.create()
+                
+                cursor = conn.connection.cursor()
+                cursor.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{pg_src_schema}'")
+                schema_exists = cursor.fetchone() is not None
+                cursor.close()
+                conn.close()
+                
+                if schema_exists:
+                    st.success(f"✅ Connected to {pg_src_database} (schema: {pg_src_schema})")
+                    st.session_state.pg_source_config = {
+                        'host': pg_src_host,
+                        'port': str(pg_src_port),
+                        'database': pg_src_database,
+                        'user': pg_src_user,
+                        'password': pg_src_password,
+                        'schema': pg_src_schema
+                    }
+                    st.session_state.pg_source_conn = credentials
+                else:
+                    st.error(f"❌ Schema '{pg_src_schema}' does not exist!")
+        except Exception as e:
+            st.error(f"❌ Connection failed: {str(e)}")
+
+# PostgreSQL Destination (Destino)
+with col2:
+    st.markdown("### 📥 Destination Database (Target)")
+    
+    with st.expander("⚙️ Connection Settings", expanded=True):
+        pg_dest_host = st.text_input("Host", value=st.session_state.pg_dest_config['host'], key="pg_dest_host")
+        pg_dest_port = st.number_input("Port", value=int(st.session_state.pg_dest_config['port']), min_value=1, max_value=65535, key="pg_dest_port")
+        pg_dest_database = st.text_input("Database", value=st.session_state.pg_dest_config['database'], key="pg_dest_db")
+        pg_dest_user = st.text_input("User", value=st.session_state.pg_dest_config['user'], key="pg_dest_user")
+        pg_dest_password = st.text_input("Password", value=st.session_state.pg_dest_config['password'], type="password", key="pg_dest_pass")
+        pg_dest_schema = st.text_input("Schema", value=st.session_state.pg_dest_config['schema'], key="pg_dest_schema")
+    
+    if st.button("🔍 Test Destination Connection", key="test_dest", width="stretch"):
+        try:
+            credentials = DBCredentials(
+                database=pg_dest_database,
+                user=pg_dest_user,
+                password=pg_dest_password,
+                host=pg_dest_host,
+                port=str(pg_dest_port)
+            )
+            
+            with st.spinner("Testing connection..."):
+                conn = PostgreSQLConnection(credentials)
+                conn.create()
+                
+                cursor = conn.connection.cursor()
+                cursor.execute(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{pg_dest_schema}'")
+                schema_exists = cursor.fetchone() is not None
+                
+                if not schema_exists:
+                    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {pg_dest_schema}")
+                    conn.connection.commit()
+                    st.info(f"📝 Schema '{pg_dest_schema}' created")
+                
+                cursor.close()
+                conn.close()
+                
+                st.success(f"✅ Connected to {pg_dest_database} (schema: {pg_dest_schema})")
+                st.session_state.pg_dest_config = {
+                    'host': pg_dest_host,
+                    'port': str(pg_dest_port),
+                    'database': pg_dest_database,
+                    'user': pg_dest_user,
+                    'password': pg_dest_password,
+                    'schema': pg_dest_schema
+                }
+                st.session_state.pg_dest_conn = credentials
+        except Exception as e:
+            st.error(f"❌ Connection failed: {str(e)}")
+
+# Verificar se ambas conexões estão configuradas
+st.markdown("---")
+
+if 'pg_source_conn' not in st.session_state or 'pg_dest_conn' not in st.session_state:
+    st.warning("⚠️ Please configure and test both source and destination connections before proceeding.")
+    st.stop()
+
+st.success("✅ Both connections configured! Proceed with migration below.")
+
+# Seção de Migração
+st.markdown("---")
+st.subheader("📊 Migration Workflow")
+
+st.info("""
+**Migration Steps:**
+1. **Load Metadata** - Scan source database tables
+2. **Select Tables** - Choose which tables to migrate
+3. **Migrate Schema** - Create tables, constraints, indexes in destination
+4. **Migrate Data** - Copy data with progress tracking (respects FK order)
+5. **Synchronize Sequences** - Update auto-increment values
+6. **Validate** - Verify row counts match
+""")
+
+# Tabs para diferentes operações
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["1️⃣ Metadata", "2️⃣ Schema", "3️⃣ Data", "4️⃣ Sequences", "5️⃣ Validate"])
+
+with tab1:
+    st.markdown("### Load Source Database Structure")
+    
+    if st.button("🔄 Load Tables from Source", key="load_metadata", width="stretch"):
+        try:
+            with st.spinner("Loading tables and analyzing foreign keys..."):
+                source = PostgreSQLConnection(st.session_state.pg_source_conn)
+                source.create()
+                
+                cursor = source.connection.cursor()
+                cursor.execute(f"""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = '{st.session_state.pg_source_config['schema']}'
+                    AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                
+                tables = [row[0] for row in cursor.fetchall()]
+                
+                if not tables:
+                    st.error(f"❌ No tables found in schema '{st.session_state.pg_source_config['schema']}'")
+                    cursor.close()
+                    source.close()
+                    st.stop()
+                
+                # Buscar foreign keys para ordenação topológica
+                cursor.execute(f"""
+                    SELECT
+                        tc.table_name,
+                        ccu.table_name AS referenced_table
+                    FROM information_schema.table_constraints AS tc
+                    JOIN information_schema.key_column_usage AS kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage AS ccu
+                        ON ccu.constraint_name = tc.constraint_name
+                        AND ccu.table_schema = tc.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                        AND tc.table_schema = '{st.session_state.pg_source_config['schema']}'
+                """)
+                
+                fk_relations = cursor.fetchall()
+                
+                # Construir grafo de dependências
+                dependencies = {}
+                for table in tables:
+                    dependencies[table] = []
+                
+                for child_table, parent_table in fk_relations:
+                    if child_table in dependencies and parent_table in tables:
+                        dependencies[child_table].append(parent_table)
+                
+                # Ordenação topológica (Kahn's algorithm)
+                def topological_sort(deps):
+                    in_degree = {table: 0 for table in deps.keys()}
+                    for table, parents in deps.items():
+                        for parent in parents:
+                            if parent in in_degree:
+                                in_degree[table] += 1
+                    
+                    queue = [table for table, degree in in_degree.items() if degree == 0]
+                    sorted_tables = []
+                    
+                    while queue:
+                        queue.sort()
+                        table = queue.pop(0)
+                        sorted_tables.append(table)
+                        
+                        for other_table, parents in deps.items():
+                            if table in parents:
+                                in_degree[other_table] -= 1
+                                if in_degree[other_table] == 0:
+                                    queue.append(other_table)
+                    
+                    if len(sorted_tables) != len(deps):
+                        remaining = [t for t in deps.keys() if t not in sorted_tables]
+                        sorted_tables.extend(sorted(remaining))
+                    
+                    return sorted_tables
+                
+                ordered_tables = topological_sort(dependencies)
+                
+                # Buscar contagem de linhas
+                table_info = []
+                for table_name in ordered_tables:
+                    try:
+                        # Usar aspas duplas para preservar case-sensitivity
+                        cursor.execute(f"""
+                            SELECT COUNT(*) 
+                            FROM {st.session_state.pg_source_config['schema']}."{table_name}"
+                        """)
+                        row_count = cursor.fetchone()[0]
+                    except Exception as count_error:
+                        # Se falhar (tabela não existe), registrar com 0 rows e adicionar aviso
+                        st.warning(f"⚠️ Could not count rows for table '{table_name}': {str(count_error)}")
+                        row_count = 0
+                    
+                    deps = dependencies.get(table_name, [])
+                    table_info.append({
+                        'name': table_name,
+                        'rows': row_count,
+                        'dependencies': deps
+                    })
+                
+                cursor.close()
+                source.close()
+                
+                st.session_state.pg_tables = table_info
+                st.session_state.pg_selected_tables = [t['name'] for t in table_info]
+                st.session_state.pg_migration_order = ordered_tables
+                
+                st.success(f"✅ Loaded {len(tables)} tables (ordered by FK dependencies)")
+                st.info(f"📊 Migration order computed: Parents → Children")
+                st.balloons()
+        except Exception as e:
+            st.error(f"❌ Error loading metadata: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+    
+    if 'pg_tables' in st.session_state:
+        st.markdown("---")
+        st.markdown(f"### Tables Found: {len(st.session_state.pg_tables)}")
+        
+        total_rows = sum(t['rows'] for t in st.session_state.pg_tables)
+        selected_rows = sum(t['rows'] for t in st.session_state.pg_tables if t['name'] in st.session_state.pg_selected_tables)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Tables", len(st.session_state.pg_tables))
+        with col2:
+            st.metric("Selected Tables", len(st.session_state.pg_selected_tables))
+        with col3:
+            st.metric("Selected Rows", f"{selected_rows:,}")
+        
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Select All", key="pg_select_all", width="stretch"):
+                st.session_state.pg_selected_tables = [t['name'] for t in st.session_state.pg_tables]
+                st.rerun()
+        with col2:
+            if st.button("❌ Deselect All", key="pg_deselect_all", width="stretch"):
+                st.session_state.pg_selected_tables = []
+                st.rerun()
+        
+        st.markdown("---")
+        st.markdown("#### 📋 Tables (Ordered by Dependencies)")
+        st.caption("✅ Tables are automatically ordered: Parent tables → Child tables")
+        
+        for idx, table_info in enumerate(st.session_state.pg_tables):
+            table = table_info['name']
+            rows = table_info['rows']
+            deps = table_info.get('dependencies', [])
+            is_selected = table in st.session_state.pg_selected_tables
+            
+            col1, col2, col3 = st.columns([0.5, 3, 1.5])
+            with col1:
+                st.caption(f"#{idx+1}")
+            with col2:
+                if st.checkbox(f"{table}", value=is_selected, key=f"pg_table_{table}"):
+                    if table not in st.session_state.pg_selected_tables:
+                        st.session_state.pg_selected_tables.append(table)
+                else:
+                    if table in st.session_state.pg_selected_tables:
+                        st.session_state.pg_selected_tables.remove(table)
+                
+                if deps:
+                    st.caption(f"   ↳ Depends on: {', '.join(deps)}")
+            with col3:
+                st.caption(f"{rows:,} rows")
+        
+        with st.expander("🔍 View Migration Order"):
+            st.markdown("**Tables will be migrated in this order:**")
+            for idx, table_name in enumerate(st.session_state.pg_migration_order, 1):
+                table_info = next((t for t in st.session_state.pg_tables if t['name'] == table_name), None)
+                if table_info:
+                    deps = table_info.get('dependencies', [])
+                    if deps:
+                        st.text(f"{idx}. {table_name} (depends on: {', '.join(deps)})")
+                    else:
+                        st.text(f"{idx}. {table_name} (no dependencies)")
+
+with tab2:
+    st.markdown("### Migrate Table Structures")
+    st.info("This will create tables, primary keys, constraints, and indexes in the destination database.")
+    
+    if 'pg_selected_tables' not in st.session_state or len(st.session_state.pg_selected_tables) == 0:
+        st.warning("⚠️ Please load and select tables first (Metadata tab)")
+    else:
+        st.markdown(f"**Selected tables:** {len(st.session_state.pg_selected_tables)}")
+        
+        with st.expander("📋 View Selected Tables"):
+            for table in st.session_state.pg_selected_tables:
+                st.text(f"• {table}")
+        
+        st.markdown("---")
+        
+        if st.button("🚀 Migrate Schema (DDL)", key="migrate_schema", type="primary", width="stretch"):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            log_area = st.empty()
+            logs = []
+            
+            try:
+                source = PostgreSQLConnection(st.session_state.pg_source_conn)
+                source.create()
+                dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                dest.create()
+                
+                source_schema = st.session_state.pg_source_config['schema']
+                dest_schema = st.session_state.pg_dest_config['schema']
+                
+                total_tables = len(st.session_state.pg_selected_tables)
+                
+                for idx, table_name in enumerate(st.session_state.pg_selected_tables):
+                    status_text.text(f"📦 [{idx+1}/{total_tables}] Migrating schema: {table_name}")
+                    
+                    src_cursor = source.connection.cursor()
+                    
+                    src_cursor.execute(f"""
+                        SELECT 
+                            column_name,
+                            data_type,
+                            character_maximum_length,
+                            is_nullable,
+                            column_default,
+                            udt_name
+                        FROM information_schema.columns
+                        WHERE table_schema = '{source_schema}'
+                        AND table_name = '{table_name}'
+                        ORDER BY ordinal_position
+                    """)
+                    
+                    columns = src_cursor.fetchall()
+                    
+                    column_defs = []
+                    for col in columns:
+                        col_name, data_type, max_length, nullable, default, udt_name = col
+                        
+                        # Para tipos USER-DEFINED, usar o udt_name real
+                        if data_type == 'USER-DEFINED':
+                            actual_type = udt_name
+                        elif data_type == 'ARRAY':
+                            actual_type = udt_name  # Ex: _int4 vira integer[]
+                        else:
+                            actual_type = data_type
+                        
+                        col_def = f'"{col_name}" {actual_type}'
+                        if max_length and data_type not in ('USER-DEFINED', 'ARRAY'):
+                            col_def = f'"{col_name}" {actual_type}({max_length})'
+                        if default:
+                            col_def += f' DEFAULT {default}'
+                        if nullable == 'NO':
+                            col_def += ' NOT NULL'
+                        
+                        column_defs.append(col_def)
+                    
+                    create_table_sql = f"""
+                        CREATE TABLE IF NOT EXISTS {dest_schema}.{table_name} (
+                            {', '.join(column_defs)}
+                        )
+                    """
+                    
+                    dest_cursor = dest.connection.cursor()
+                    dest_cursor.execute(create_table_sql)
+                    dest.connection.commit()
+                    
+                    # Criar sequences para colunas que tinham nextval no source
+                    src_cursor.execute(f"""
+                        SELECT column_name, column_default
+                        FROM information_schema.columns
+                        WHERE table_schema = '{source_schema}'
+                        AND table_name = '{table_name}'
+                        AND column_default LIKE 'nextval%'
+                    """)
+                    
+                    cols_with_seq = src_cursor.fetchall()
+                    
+                    for col_name, col_default in cols_with_seq:
+                        # Extrair nome da sequence ou criar padrão
+                        import re
+                        seq_match = re.search(r"nextval\('(?:.*?\.)?([^']+)'", col_default)
+                        if seq_match:
+                            src_seq_name = seq_match.group(1).strip('"')
+                        else:
+                            src_seq_name = f"{table_name}_{col_name}_seq"
+                        
+                        # Criar sequence no destino
+                        dest_cursor.execute(f"""
+                            CREATE SEQUENCE IF NOT EXISTS {dest_schema}.{src_seq_name}
+                        """)
+                        
+                        # Associar sequence à coluna
+                        dest_cursor.execute(f"""
+                            ALTER TABLE {dest_schema}.{table_name}
+                            ALTER COLUMN "{col_name}"
+                            SET DEFAULT nextval('{dest_schema}.{src_seq_name}'::regclass)
+                        """)
+                        
+                        # Transferir ownership da sequence para a coluna
+                        dest_cursor.execute(f"""
+                            ALTER SEQUENCE {dest_schema}.{src_seq_name}
+                            OWNED BY {dest_schema}.{table_name}."{col_name}"
+                        """)
+                        
+                        dest.connection.commit()
+                        logs.append(f"  → Created sequence {src_seq_name} for {table_name}.{col_name}")
+                    
+                    dest_cursor.close()
+                    src_cursor.close()
+                    
+                    logs.append(f"✅ {table_name} - structure created")
+                    log_area.text_area("Migration Log", "\n".join(logs[-10:]), height=200)
+                    progress_bar.progress(min((idx + 1) / total_tables, 1.0))
+                
+                source.close()
+                dest.close()
+                
+                status_text.text("✅ Schema migration completed!")
+                st.success(f"✅ Successfully migrated {total_tables} table structures!")
+                st.balloons()
+                
+            except Exception as e:
+                st.error(f"❌ Schema migration failed: {str(e)}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+
+with tab3:
+    st.markdown("### Migrate Table Data")
+    st.info("Copy data from source to destination using CSV as intermediate format for better data integrity.")
+    st.warning("⚠️ **Tables will be migrated in dependency order (parents first) to avoid FK violations**")
+    
+    st.success("""
+    **New CSV-based Migration Method:**
+    - ✅ Better handling of NULL values
+    - ✅ Preserves data types correctly (JSON, arrays, etc)
+    - ✅ More reliable for large datasets
+    - ✅ Handles duplicates gracefully
+    - ✅ Easier to debug and resume
+    """)
+    
+    if 'pg_selected_tables' not in st.session_state or len(st.session_state.pg_selected_tables) == 0:
+        st.warning("⚠️ Please load and select tables first (Metadata tab)")
+    else:
+        st.markdown(f"**Selected tables:** {len(st.session_state.pg_selected_tables)}")
+        
+        with st.expander("⚙️ Migration Settings"):
+            migration_method = st.radio(
+                "Migration Method",
+                ["CSV (Recommended)", "Direct INSERT (Old)"],
+                help="CSV method is more reliable and handles data types better"
+            )
+            
+            batch_size = st.number_input("Batch Size", min_value=1000, max_value=50000, value=10000, step=1000,
+                                        help="Number of rows to process at once")
+            
+            conflict_mode = st.selectbox(
+                "Conflict Resolution",
+                ["Skip Duplicates (ON CONFLICT DO NOTHING)", "Update Duplicates (ON CONFLICT DO UPDATE)", "Fail on Duplicate"],
+                help="How to handle duplicate key violations"
+            )
+            
+            csv_dir = st.text_input("CSV Directory", value="data_pg_migration",
+                                   help="Directory to store CSV files during migration")
+            
+            keep_csv = st.checkbox("Keep CSV files after migration", value=False,
+                                  help="Useful for debugging or re-importing")
+        
+        st.markdown("---")
+        
+        if st.button("🚀 Migrate Data", key="migrate_data", type="primary", width="stretch"):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            log_area = st.empty()
+            logs = []
+            
+            # Configurar logging para console
+            import logging
+            import sys
+            
+            # Criar logger específico para migração
+            logger = logging.getLogger('pg_migration')
+            logger.setLevel(logging.INFO)
+            
+            # Remover handlers existentes
+            logger.handlers = []
+            
+            # Handler para console com formato detalhado
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter(
+                '%(asctime)s - [%(levelname)s] - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+            
+            logger.info("="*80)
+            logger.info("Starting PostgreSQL → PostgreSQL Data Migration")
+            logger.info(f"Method: {migration_method}")
+            logger.info("="*80)
+            
+            success_tables = []
+            failed_tables = []
+            
+            # Use CSV migration if selected
+            if migration_method == "CSV (Recommended)":
+                from dbmigrator.data_migration.pg_to_pg_csv import PostgreSQLToCSV, CSVToPostgreSQL
+                import shutil
+            
+            try:
+                source = PostgreSQLConnection(st.session_state.pg_source_conn)
+                source.create()
+                dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                dest.create()
+                
+                source_schema = st.session_state.pg_source_config['schema']
+                dest_schema = st.session_state.pg_dest_config['schema']
+                
+                migration_order = st.session_state.pg_migration_order
+                tables_to_migrate = [t for t in migration_order if t in st.session_state.pg_selected_tables]
+                
+                total_tables = len(tables_to_migrate)
+                logs.append(f"📊 Migration order (respecting FKs): {' → '.join(tables_to_migrate[:5])}{'...' if len(tables_to_migrate) > 5 else ''}")
+                log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                
+                logger.info(f"Total tables to migrate: {total_tables}")
+                logger.info(f"Migration order (first 10): {' → '.join(tables_to_migrate[:10])}")
+                logger.info("-"*80)
+                
+                # CSV-based migration
+                if migration_method == "CSV (Recommended)":
+                    logger.info("Using CSV-based migration method")
+                    
+                    # Create CSV exporters/importers
+                    csv_exporter = PostgreSQLToCSV(source, schema=source_schema, output_dir=csv_dir)
+                    csv_importer = CSVToPostgreSQL(dest, schema=dest_schema, input_dir=csv_dir)
+                    
+                    # Determine conflict mode
+                    if "Skip" in conflict_mode:
+                        on_conflict = 'do_nothing'
+                    elif "Update" in conflict_mode:
+                        on_conflict = 'update'
+                    else:
+                        on_conflict = None
+                    
+                    # Phase 1: Export all tables to CSV
+                    logger.info("-" * 80)
+                    logger.info("PHASE 1: Exporting tables to CSV")
+                    logger.info("-" * 80)
+                    
+                    for idx, table_name in enumerate(tables_to_migrate):
+                        try:
+                            status_text.text(f"📤 [{idx+1}/{total_tables}] Exporting: {table_name}")
+                            logger.info(f"[{idx+1}/{total_tables}] Exporting table: {table_name}")
+                            
+                            def export_progress(current, total):
+                                percent = (current / total * 100) if total > 0 else 0
+                                if current % batch_size == 0:
+                                    logger.info(f"  Export progress: {current:,}/{total:,} ({percent:.1f}%)")
+                            
+                            result = csv_exporter.export_table(table_name, batch_size=batch_size, progress_callback=export_progress)
+                            
+                            if result['status'] == 'success':
+                                logs.append(f"✅ {table_name} - exported {result['rows_exported']:,} rows to CSV")
+                                logger.info(f"  Result: SUCCESS - {result['rows_exported']:,} rows exported")
+                            elif result['status'] == 'empty':
+                                logs.append(f"⏭️ {table_name} - table is empty, skipped")
+                                logger.info(f"  Result: EMPTY - Skipped")
+                            else:
+                                logs.append(f"❌ {table_name} - export failed")
+                                logger.error(f"  Result: FAILED")
+                                failed_tables.append({'name': table_name, 'error': 'Export failed'})
+                            
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            progress_bar.progress((idx + 0.5) / total_tables)
+                            
+                        except Exception as export_error:
+                            error_msg = str(export_error)
+                            logs.append(f"❌ {table_name} - export error: {error_msg[:100]}")
+                            logger.error(f"  Export ERROR: {error_msg}")
+                            failed_tables.append({'name': table_name, 'error': error_msg})
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                    
+                    # Phase 2: Import all tables from CSV
+                    logger.info("-" * 80)
+                    logger.info("PHASE 2: Importing tables from CSV")
+                    logger.info("-" * 80)
+                    
+                    for idx, table_name in enumerate(tables_to_migrate):
+                        # Skip if already failed in export
+                        if any(ft['name'] == table_name for ft in failed_tables):
+                            continue
+                        
+                        try:
+                            status_text.text(f"📥 [{idx+1}/{total_tables}] Importing: {table_name}")
+                            logger.info(f"[{idx+1}/{total_tables}] Importing table: {table_name}")
+                            
+                            def import_progress(current):
+                                if current % batch_size == 0:
+                                    logger.info(f"  Import progress: {current:,} rows processed")
+                            
+                            result = csv_importer.import_table(table_name, batch_size=batch_size, 
+                                                              on_conflict=on_conflict, 
+                                                              progress_callback=import_progress)
+                            
+                            if result['status'] == 'success':
+                                logs.append(f"✅ {table_name} - imported {result['rows_imported']:,} rows, skipped {result['rows_skipped']:,}")
+                                logger.info(f"  Result: SUCCESS - {result['rows_imported']:,} rows imported, {result['rows_skipped']:,} skipped")
+                                success_tables.append(table_name)
+                            elif result['status'] == 'file_not_found':
+                                logs.append(f"⚠️ {table_name} - CSV file not found")
+                                logger.warning(f"  Result: CSV FILE NOT FOUND")
+                                failed_tables.append({'name': table_name, 'error': 'CSV file not found'})
+                            else:
+                                error_msg = result.get('error', 'Unknown error')
+                                logs.append(f"❌ {table_name} - import failed: {error_msg[:100]}")
+                                logger.error(f"  Result: FAILED - {error_msg}")
+                                failed_tables.append({'name': table_name, 'error': error_msg})
+                            
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            progress_bar.progress((idx + 1) / total_tables)
+                            
+                        except Exception as import_error:
+                            error_msg = str(import_error)
+                            logs.append(f"❌ {table_name} - import error: {error_msg[:100]}")
+                            logger.error(f"  Import ERROR: {error_msg}")
+                            failed_tables.append({'name': table_name, 'error': error_msg})
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                    
+                    # Cleanup CSV files if requested
+                    if not keep_csv:
+                        try:
+                            logger.info("-" * 80)
+                            logger.info("Cleaning up CSV files...")
+                            shutil.rmtree(csv_dir)
+                            logs.append(f"🧹 Cleaned up CSV directory: {csv_dir}")
+                            logger.info(f"  CSV directory removed: {csv_dir}")
+                        except Exception as cleanup_error:
+                            logs.append(f"⚠️ Could not clean up CSV files: {str(cleanup_error)}")
+                            logger.warning(f"  Cleanup warning: {str(cleanup_error)}")
+                
+                # OLD Direct INSERT method  
+                else:
+                    if conflict_mode.startswith("Skip"):
+                        skip_duplicates = True
+                    else:
+                        skip_duplicates = False
+                    
+                    disable_fks = False  # Not recommended for direct insert
+                    
+                    if disable_fks:
+                        dest_cursor = dest.connection.cursor()
+                        for table_name in tables_to_migrate:
+                            dest_cursor.execute(f"ALTER TABLE {dest_schema}.\"{table_name}\" DISABLE TRIGGER ALL")
+                        dest.connection.commit()
+                        dest_cursor.close()
+                        logs.append("⚠️ Foreign key triggers disabled")
+                    
+                    for idx, table_name in enumerate(tables_to_migrate):
+                        try:
+                            dest.connection.rollback()
+                            
+                            logger.info(f"[{idx+1}/{total_tables}] Processing table: {table_name}")
+                            status_text.text(f"📦 [{idx+1}/{total_tables}] Migrating data: {table_name}")
+                            
+                            src_cursor = source.connection.cursor()
+                            
+                            try:
+                            src_cursor.execute(f"""
+                                SELECT column_name
+                                FROM information_schema.columns
+                                WHERE table_schema = '{source_schema}'
+                                AND table_name = '{table_name}'
+                                ORDER BY ordinal_position
+                            """)
+                            columns = [row[0] for row in src_cursor.fetchall()]
+                            column_list = ', '.join([f'"{col}"' for col in columns])
+                            
+                            # Detectar a chave primária com rollback em caso de erro
+                            try:
+                                # Buscar o OID da tabela para garantir case-sensitivity correto
+                                src_cursor.execute(f"""
+                                    SELECT c.oid
+                                    FROM pg_class c
+                                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                                    WHERE n.nspname = '{source_schema}'
+                                    AND c.relname = '{table_name}'
+                                """)
+                                
+                                oid_result = src_cursor.fetchone()
+                                if oid_result:
+                                    table_oid = oid_result[0]
+                                    
+                                    # Buscar apenas PRIMARY KEY (mais confiável para ON CONFLICT)
+                                    src_cursor.execute(f"""
+                                        SELECT a.attname
+                                        FROM pg_index i
+                                        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                                        WHERE i.indrelid = {table_oid}
+                                        AND i.indisprimary
+                                        ORDER BY a.attnum
+                                    """)
+                                    pk_columns = [row[0] for row in src_cursor.fetchall()]
+                                else:
+                                    pk_columns = []
+                            except Exception as pk_error:
+                                source.connection.rollback()
+                                logs.append(f"⚠️ {table_name} - could not detect PK: {str(pk_error)}, will skip ON CONFLICT")
+                                log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                                pk_columns = []
+                            
+                            src_cursor.execute(f"SELECT COUNT(*) FROM {source_schema}.\"{table_name}\"")
+                            total_rows = src_cursor.fetchone()[0]
+                            
+                            logger.info(f"  Source rows: {total_rows:,}")
+                        
+                        except Exception as col_error:
+                            source.connection.rollback()
+                            logs.append(f"❌ {table_name} - error reading columns: {str(col_error)}")
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            src_cursor.close()
+                            failed_tables.append({'name': table_name, 'error': str(col_error)})
+                            progress_bar.progress(min((idx + 1) / total_tables, 1.0))
+                            continue
+                        
+                        if total_rows == 0:
+                            logs.append(f"⏭️ {table_name} - empty table, skipped")
+                            logger.info(f"  Status: EMPTY - Skipped")
+                            success_tables.append(table_name)
+                            src_cursor.close()
+                            continue
+                        
+                        # Verificar quantos registros já existem no destino
+                        dest_cursor = dest.connection.cursor()
+                        try:
+                            dest_cursor.execute(f"SELECT COUNT(*) FROM {dest_schema}.\"{table_name}\"")
+                            existing_rows = dest_cursor.fetchone()[0]
+                            logger.info(f"  Destination rows: {existing_rows:,}")
+                        except Exception as dest_error:
+                            dest.connection.rollback()
+                            logs.append(f"⚠️ {table_name} - table does not exist in destination, skipping")
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            dest_cursor.close()
+                            src_cursor.close()
+                            failed_tables.append({'name': table_name, 'error': f'Table not in destination: {str(dest_error)}'})
+                            progress_bar.progress(min((idx + 1) / total_tables, 1.0))
+                            continue
+                        
+                        if existing_rows >= total_rows:
+                            logs.append(f"⏭️ {table_name} - destination has {existing_rows:,} rows (source has {total_rows:,}), already complete - skipped")
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            logger.info(f"  Status: COMPLETE - Destination >= Source ({existing_rows:,} >= {total_rows:,})")
+                            success_tables.append(table_name)
+                            dest_cursor.close()
+                            src_cursor.close()
+                            progress_bar.progress(min((idx + 1) / total_tables, 1.0))
+                            continue
+                        
+                        if existing_rows > 0:
+                            completion_pct = existing_rows/total_rows*100
+                            logs.append(f"📊 {table_name} - destination has {existing_rows:,}/{total_rows:,} rows ({completion_pct:.1f}% complete), will append missing data")
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            logger.info(f"  Status: PARTIAL - {completion_pct:.1f}% complete ({existing_rows:,}/{total_rows:,} rows)")
+                            logger.info(f"  Will attempt to insert {total_rows - existing_rows:,} missing rows")
+                        
+                        dest_cursor.close()
+                        
+                        offset = 0
+                        inserted_total = 0
+                        skipped_total = 0
+                        connection_retries = 0
+                        max_retries = 3
+                        
+                        dest_cursor = dest.connection.cursor()
+                        
+                        while offset < total_rows:
+                            src_cursor.execute(f"""
+                                SELECT {column_list}
+                                FROM {source_schema}."{table_name}"
+                                ORDER BY 1
+                                LIMIT {batch_size} OFFSET {offset}
+                            """)
+                            
+                            rows = src_cursor.fetchall()
+                            if not rows:
+                                break
+                            
+                            # Buscar tipos de colunas para saber quais são JSONB vs ARRAY
+                            src_cursor.execute(f"""
+                                SELECT column_name, data_type, udt_name
+                                FROM information_schema.columns
+                                WHERE table_schema = '{source_schema}'
+                                AND table_name = '{table_name}'
+                                ORDER BY ordinal_position
+                            """)
+                            column_types = {row[0]: (row[1], row[2]) for row in src_cursor.fetchall()}
+                            
+                            # Serializar dicts/listas considerando o tipo da coluna
+                            import json
+                            serialized_rows = []
+                            for row in rows:
+                                serialized_row = []
+                                for idx, val in enumerate(row):
+                                    col_name = columns[idx]
+                                    data_type, udt_name = column_types.get(col_name, ('unknown', 'unknown'))
+                                    
+                                    if isinstance(val, (dict, list)):
+                                        # Se é ARRAY PostgreSQL, manter como lista Python
+                                        if data_type == 'ARRAY' or udt_name.startswith('_'):
+                                            serialized_row.append(val)
+                                        # Se é JSONB/JSON, converter para string JSON
+                                        elif data_type in ('jsonb', 'json') or udt_name in ('jsonb', 'json'):
+                                            serialized_row.append(json.dumps(val))
+                                        else:
+                                            # Padrão: converter para JSON string
+                                            serialized_row.append(json.dumps(val))
+                                    else:
+                                        serialized_row.append(val)
+                                serialized_rows.append(tuple(serialized_row))
+                            rows = serialized_rows
+                            
+                            placeholders = ', '.join(['%s'] * len(columns))
+                            
+                            # Se não tem PK, usar ON CONFLICT (pode não funcionar em todas as tabelas)
+                            if not pk_columns:
+                                insert_sql = f"""
+                                    INSERT INTO {dest_schema}."{table_name}" ({column_list})
+                                    VALUES ({placeholders})
+                                """
+                            else:
+                                # Com PK, usar ON CONFLICT na chave primária
+                                pk_conflict = ', '.join([f'"{pk}"' for pk in pk_columns])
+                                insert_sql = f"""
+                                    INSERT INTO {dest_schema}."{table_name}" ({column_list})
+                                    VALUES ({placeholders})
+                                    ON CONFLICT ({pk_conflict}) DO NOTHING
+                                """
+                            
+                            import psycopg2.extras
+                            rows_before = 0
+                            dest_cursor.execute(f"SELECT COUNT(*) FROM {dest_schema}.\"{table_name}\"")
+                            rows_before = dest_cursor.fetchone()[0]
+                            
+                            try:
+                                psycopg2.extras.execute_batch(dest_cursor, insert_sql, rows, page_size=len(rows))
+                                dest.connection.commit()
+                                connection_retries = 0  # Reset retry counter on success
+                            except Exception as insert_error:
+                                error_msg = str(insert_error)
+                                
+                                # Verificar se é erro de conexão/timeout
+                                if any(x in error_msg.lower() for x in ['timeout', 'connection', 'closed', 'broken pipe']):
+                                    logger.error(f"  Connection error detected: {error_msg[:100]}")
+                                    
+                                    if connection_retries < max_retries:
+                                        connection_retries += 1
+                                        logger.info(f"  Attempting to reconnect ({connection_retries}/{max_retries})...")
+                                        
+                                        try:
+                                            # Fechar e recriar conexões
+                                            try:
+                                                dest.close()
+                                            except:
+                                                pass
+                                            
+                                            dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                            dest.create()
+                                            dest_cursor = dest.connection.cursor()
+                                            
+                                            logger.info(f"  Reconnected successfully. Continuing from offset {offset}")
+                                            continue  # Retry this batch
+                                        except Exception as reconnect_error:
+                                            logger.error(f"  Reconnection failed: {str(reconnect_error)}")
+                                            raise
+                                    else:
+                                        logger.error(f"  Max retries ({max_retries}) reached. Aborting.")
+                                        raise
+                                
+                                # Se não é erro de conexão, tratar como duplicata/FK
+                                try:
+                                    dest.connection.rollback()
+                                except:
+                                    # Se rollback falhar (conexão morta), reconectar
+                                    dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                    dest.create()
+                                    dest_cursor = dest.connection.cursor()
+                                
+                                logger.warning(f"  Batch insert failed: {error_msg[:100]}")
+                                logger.info(f"  Using mini-batch insert strategy (skip problematic rows)...")
+                                
+                                # INSERT sem ON CONFLICT para detectar erros específicos
+                                simple_insert_sql = f"""
+                                    INSERT INTO {dest_schema}."{table_name}" ({column_list})
+                                    VALUES ({placeholders})
+                                """
+                                
+                                inserted_count = 0
+                                skipped_count = 0
+                                
+                                # Processar em mini-batches de 100 linhas
+                                mini_batch_size = 100
+                                for mini_start in range(0, len(rows), mini_batch_size):
+                                    mini_batch = rows[mini_start:mini_start + mini_batch_size]
+                                    
+                                    try:
+                                        # Tentar inserir mini-batch inteiro
+                                        psycopg2.extras.execute_batch(dest_cursor, simple_insert_sql, mini_batch, page_size=len(mini_batch))
+                                        dest.connection.commit()
+                                        inserted_count += len(mini_batch)
+                                    except Exception as mini_error:
+                                        mini_error_msg = str(mini_error)
+                                        
+                                        # Verificar timeout no mini-batch
+                                        if any(x in mini_error_msg.lower() for x in ['timeout', 'connection', 'closed']):
+                                            logger.warning(f"  Timeout in mini-batch, reconnecting...")
+                                            try:
+                                                dest.close()
+                                            except:
+                                                pass
+                                            dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                            dest.create()
+                                            dest_cursor = dest.connection.cursor()
+                                            # Pular este mini-batch e continuar
+                                            skipped_count += len(mini_batch)
+                                            continue
+                                        
+                                        # Se mini-batch falhar por duplicata, processar linha por linha
+                                        try:
+                                            dest.connection.rollback()
+                                        except:
+                                            dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                            dest.create()
+                                            dest_cursor = dest.connection.cursor()
+                                        
+                                        for single_row in mini_batch:
+                                            try:
+                                                dest_cursor.execute(simple_insert_sql, single_row)
+                                                dest.connection.commit()
+                                                inserted_count += 1
+                                            except Exception as row_error:
+                                                row_error_msg = str(row_error)
+                                                
+                                                # Timeout em linha individual
+                                                if any(x in row_error_msg.lower() for x in ['timeout', 'connection', 'closed']):
+                                                    try:
+                                                        dest.close()
+                                                    except:
+                                                        pass
+                                                    dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                                    dest.create()
+                                                    dest_cursor = dest.connection.cursor()
+                                                    skipped_count += 1
+                                                    continue
+                                                
+                                                try:
+                                                    dest.connection.rollback()
+                                                except:
+                                                    dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                                                    dest.create()
+                                                    dest_cursor = dest.connection.cursor()
+                                                skipped_count += 1
+                                
+                                logs.append(f"  → {table_name}: inserted {inserted_count}, skipped {skipped_count} (duplicates/FK errors)")
+                                log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                                logger.info(f"  Mini-batch result: {inserted_count} inserted, {skipped_count} skipped")
+                                connection_retries = 0  # Reset após sucesso
+                            
+                            dest_cursor.execute(f"SELECT COUNT(*) FROM {dest_schema}.\"{table_name}\"")
+                            rows_after = dest_cursor.fetchone()[0]
+                            
+                            inserted_batch = rows_after - rows_before
+                            skipped_batch = len(rows) - inserted_batch
+                            
+                            inserted_total += inserted_batch
+                            skipped_total += skipped_batch
+                            
+                            offset += batch_size
+                            
+                            percent = min(offset / total_rows * 100, 100)
+                            logs.append(f"  → {table_name}: {offset:,}/{total_rows:,} ({percent:.1f}%) - inserted: {inserted_total:,}, skipped: {skipped_total:,}")
+                            log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                            
+                            # Log detalhado no console a cada 10% ou a cada 10 batches
+                            if offset % (batch_size * 10) == 0 or percent % 10 < (batch_size / total_rows * 100):
+                                logger.info(f"  Progress: {percent:.1f}% ({offset:,}/{total_rows:,}) | Inserted: {inserted_total:,} | Skipped: {skipped_total:,}")
+                        
+                        dest_cursor.close()
+                        src_cursor.close()
+                        
+                        success_tables.append(table_name)
+                        logs.append(f"✅ {table_name} - {inserted_total:,} rows inserted, {skipped_total:,} skipped")
+                        logger.info(f"  Result: SUCCESS - {inserted_total:,} rows inserted, {skipped_total:,} skipped")
+                        logger.info("-"*80)
+                        
+                    except Exception as table_error:
+                        dest.connection.rollback()
+                        failed_tables.append({'name': table_name, 'error': str(table_error)})
+                        logs.append(f"❌ {table_name} - FAILED: {str(table_error)}")
+                        log_area.text_area("Migration Log", "\n".join(logs[-15:]), height=300)
+                        logger.error(f"  Result: FAILED - {str(table_error)}")
+                        logger.error("-"*80)
+                        finally:
+                            # Atualizar progress bar sempre, garantindo valor entre 0 e 1
+                            progress_value = min((idx + 1) / total_tables, 1.0)
+                            progress_bar.progress(progress_value)
+                    
+                    if disable_fks:
+                        dest_cursor = dest.connection.cursor()
+                        for table_name in tables_to_migrate:
+                            dest_cursor.execute(f"ALTER TABLE {dest_schema}.\"{table_name}\" ENABLE TRIGGER ALL")
+                        dest.connection.commit()
+                        dest_cursor.close()
+                        logs.append("✅ Foreign key triggers re-enabled")
+                
+                source.close()
+                dest.close()
+                
+                logger.info("="*80)
+                logger.info("Migration Summary")
+                logger.info("="*80)
+                logger.info(f"Total tables processed: {len(success_tables) + len(failed_tables)}")
+                logger.info(f"Successful: {len(success_tables)}")
+                logger.info(f"Failed: {len(failed_tables)}")
+                
+                if failed_tables:
+                    logger.error("Failed tables:")
+                    for ft in failed_tables:
+                        logger.error(f"  - {ft['name']}: {ft['error'][:100]}")
+                
+                logger.info("="*80)
+                
+                st.markdown("---")
+                st.subheader("📊 Migration Summary")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("✅ Successful", len(success_tables))
+                with col2:
+                    st.metric("❌ Failed", len(failed_tables))
+                
+                if failed_tables:
+                    st.error(f"⚠️ {len(failed_tables)} table(s) failed:")
+                    import pandas as pd
+                    st.dataframe(pd.DataFrame(failed_tables), width="stretch")
+                else:
+                    st.success(f"🎉 All {len(success_tables)} tables migrated successfully!")
+                    st.balloons()
+                
+            except Exception as e:
+                st.error(f"❌ Data migration failed: {str(e)}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+
+with tab4:
+    st.markdown("### Synchronize Sequences")
+    st.info("""
+    **Synchronize auto-increment sequences between source and destination**
+    
+    This will:
+    - Detect all sequences in selected tables
+    - Get the MAX(id) from source tables
+    - Set sequences in destination to MAX(id) + 1
+    - Prevent duplicate key errors on future inserts
+    """)
+    
+    if 'pg_selected_tables' not in st.session_state or len(st.session_state.pg_selected_tables) == 0:
+        st.warning("⚠️ Please load and select tables first (Metadata tab)")
+    else:
+        st.markdown("---")
+        st.markdown("### 🔍 Detect Sequences")
+        
+        if st.button("🔎 Scan for Sequences", key="scan_sequences", width="stretch"):
+            try:
+                with st.spinner("Scanning for sequences..."):
+                    dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                    dest.create()
+                    
+                    dest_schema = st.session_state.pg_dest_config['schema']
+                    
+                    cursor = dest.connection.cursor()
+                    
+                    sequence_info = []
+                    
+                    # Buscar todas as sequences do schema
+                    cursor.execute(f"""
+                        SELECT sequence_name
+                        FROM information_schema.sequences
+                        WHERE sequence_schema = '{dest_schema}'
+                        ORDER BY sequence_name
+                    """)
+                    
+                    all_sequences = [row[0] for row in cursor.fetchall()]
+                    
+                    st.info(f"🔍 Found {len(all_sequences)} total sequences in schema '{dest_schema}'")
+                    
+                    # Para cada tabela selecionada, procurar sequences relacionadas
+                    for table_name in st.session_state.pg_selected_tables:
+                        # Buscar colunas com default nextval
+                        cursor.execute(f"""
+                            SELECT 
+                                column_name,
+                                column_default
+                            FROM information_schema.columns
+                            WHERE table_schema = '{dest_schema}'
+                            AND table_name = '{table_name}'
+                            AND column_default LIKE 'nextval%'
+                        """)
+                        
+                        cols_with_seq = cursor.fetchall()
+                        
+                        for col_name, col_default in cols_with_seq:
+                            # Extrair nome da sequence do default (ex: nextval('public.users_id_seq'::regclass))
+                            import re
+                            seq_match = re.search(r"nextval\('(?:.*?\.)?([^']+)'", col_default)
+                            if seq_match:
+                                seq_name = seq_match.group(1).strip('"')
+                                sequence_info.append({
+                                    'table': table_name,
+                                    'column': col_name,
+                                    'sequence': seq_name
+                                })
+                        
+                        # Se não encontrou por default, tentar pela convenção de nome
+                        if not cols_with_seq:
+                            for seq_name in all_sequences:
+                                if seq_name.startswith(table_name + '_'):
+                                    # Assumir que é a coluna 'id' por padrão
+                                    cursor.execute(f"""
+                                        SELECT column_name
+                                        FROM information_schema.columns
+                                        WHERE table_schema = '{dest_schema}'
+                                        AND table_name = '{table_name}'
+                                        AND column_name IN ('id', table_name || '_id')
+                                        LIMIT 1
+                                    """)
+                                    result = cursor.fetchone()
+                                    col_name = result[0] if result else 'id'
+                                    
+                                    sequence_info.append({
+                                        'table': table_name,
+                                        'column': col_name,
+                                        'sequence': seq_name
+                                    })
+                    
+                    cursor.close()
+                    dest.close()
+                    
+                    st.session_state.pg_sequences = sequence_info
+                    
+                    if sequence_info:
+                        st.success(f"✅ Found {len(sequence_info)} sequence(s) in {len(set(s['table'] for s in sequence_info))} table(s)")
+                    else:
+                        st.warning("⚠️ No sequences found in selected tables")
+                        if all_sequences:
+                            with st.expander("🔍 All sequences in schema"):
+                                for seq in all_sequences:
+                                    st.text(f"• {seq}")
+                    
+            except Exception as e:
+                st.error(f"❌ Error scanning sequences: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+        
+        if 'pg_sequences' in st.session_state and st.session_state.pg_sequences:
+            st.markdown("---")
+            st.markdown("### 📋 Sequences Found")
+            
+            import pandas as pd
+            df_sequences = pd.DataFrame(st.session_state.pg_sequences)
+            st.dataframe(df_sequences, width="stretch")
+            
+            st.markdown("---")
+            st.markdown("### 🔄 Synchronize Sequences")
+            
+            sync_mode = st.radio(
+                "Synchronization Mode",
+                ["Safe (MAX + 1)", "Exact (MAX)", "Custom Offset"],
+                help="Safe: Sets to MAX+1 (recommended). Exact: Sets to MAX. Custom: Add your own offset."
+            )
+            
+            if sync_mode == "Custom Offset":
+                offset = st.number_input("Offset", min_value=1, max_value=1000000, value=1000,
+                                        help="Value to add to MAX(id)")
+            else:
+                offset = 1 if sync_mode == "Safe (MAX + 1)" else 0
+            
+            st.markdown("---")
+            
+            if st.button("🚀 Synchronize All Sequences", key="sync_sequences", type="primary", width="stretch"):
+                try:
+                    source = PostgreSQLConnection(st.session_state.pg_source_conn)
+                    source.create()
+                    dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                    dest.create()
+                    
+                    source_schema = st.session_state.pg_source_config['schema']
+                    dest_schema = st.session_state.pg_dest_config['schema']
+                    
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    results = []
+                    
+                    for idx, seq_info in enumerate(st.session_state.pg_sequences):
+                        table_name = seq_info['table']
+                        column_name = seq_info['column']
+                        sequence_name = seq_info['sequence']
+                        
+                        status_text.text(f"🔄 [{idx+1}/{len(st.session_state.pg_sequences)}] Syncing: {table_name}.{column_name}")
+                        
+                        try:
+                            # Rollback de qualquer transação pendente
+                            source.connection.rollback()
+                            dest.connection.rollback()
+                            
+                            src_cursor = source.connection.cursor()
+                            src_cursor.execute(f"""
+                                SELECT MAX("{column_name}") 
+                                FROM {source_schema}.{table_name}
+                            """)
+                            max_id = src_cursor.fetchone()[0]
+                            src_cursor.close()
+                            source.connection.commit()
+                            
+                            if max_id is None:
+                                max_id = 0
+                            
+                            next_value = max_id + offset
+                            
+                            dest_cursor = dest.connection.cursor()
+                            dest_cursor.execute(f"""
+                                SELECT setval('{dest_schema}.{sequence_name}', {next_value}, false)
+                            """)
+                            dest.connection.commit()
+                            dest_cursor.close()
+                            
+                            results.append({
+                                'Table': table_name,
+                                'Column': column_name,
+                                'Sequence': sequence_name,
+                                'MAX(id)': max_id,
+                                'Next Value': next_value,
+                                'Status': '✅ Synced'
+                            })
+                            
+                        except Exception as seq_error:
+                            # Garantir rollback em caso de erro
+                            source.connection.rollback()
+                            dest.connection.rollback()
+                            
+                            results.append({
+                                'Table': table_name,
+                                'Column': column_name,
+                                'Sequence': sequence_name,
+                                'MAX(id)': 'N/A',
+                                'Next Value': 'N/A',
+                                'Status': f'❌ {str(seq_error)}'
+                            })
+                        
+                        progress_bar.progress((idx + 1) / len(st.session_state.pg_sequences))
+                    
+                    source.close()
+                    dest.close()
+                    
+                    st.markdown("---")
+                    st.subheader("📊 Synchronization Results")
+                    
+                    df_results = pd.DataFrame(results)
+                    
+                    def highlight_errors(row):
+                        if "❌" in str(row['Status']):
+                            return ['background-color: #ffcccc'] * len(row)
+                        return ['background-color: #ccffcc'] * len(row)
+                    
+                    styled_df = df_results.style.apply(highlight_errors, axis=1)
+                    st.dataframe(styled_df, width="stretch")
+                    
+                    success_count = sum(1 for r in results if '✅' in r['Status'])
+                    failed_count = len(results) - success_count
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("✅ Synced", success_count)
+                    with col2:
+                        st.metric("❌ Failed", failed_count)
+                    
+                    if failed_count == 0:
+                        st.success("🎉 All sequences synchronized successfully!")
+                        st.balloons()
+                    else:
+                        st.warning(f"⚠️ {failed_count} sequence(s) failed to sync")
+                    
+                except Exception as e:
+                    st.error(f"❌ Sequence synchronization failed: {str(e)}")
+                    import traceback
+                    with st.expander("Error Details"):
+                        st.code(traceback.format_exc())
+
+with tab5:
+    st.markdown("### Validate Migration")
+    st.info("Compare row counts between source and destination to verify migration integrity.")
+    
+    if 'pg_selected_tables' not in st.session_state or len(st.session_state.pg_selected_tables) == 0:
+        st.warning("⚠️ Please load and select tables first (Metadata tab)")
+    else:
+        if st.button("🔍 Validate Row Counts", key="validate", type="primary", width="stretch"):
+            try:
+                source = PostgreSQLConnection(st.session_state.pg_source_conn)
+                source.create()
+                dest = PostgreSQLConnection(st.session_state.pg_dest_conn)
+                dest.create()
+                
+                source_schema = st.session_state.pg_source_config['schema']
+                dest_schema = st.session_state.pg_dest_config['schema']
+                
+                results = []
+                progress_bar = st.progress(0)
+                
+                for idx, table_name in enumerate(st.session_state.pg_selected_tables):
+                    try:
+                        src_cursor = source.connection.cursor()
+                        src_cursor.execute(f"SELECT COUNT(*) FROM {source_schema}.\"{table_name}\"")
+                        src_count = src_cursor.fetchone()[0]
+                        src_cursor.close()
+                        
+                        dest_cursor = dest.connection.cursor()
+                        dest_cursor.execute(f"SELECT COUNT(*) FROM {dest_schema}.\"{table_name}\"")
+                        dest_count = dest_cursor.fetchone()[0]
+                        dest_cursor.close()
+                        
+                        match = src_count == dest_count
+                        results.append({
+                            "Table": table_name,
+                            "Source": src_count,
+                            "Destination": dest_count,
+                            "Status": "✅ Match" if match else "❌ Mismatch"
+                        })
+                    except Exception as validate_error:
+                        # Tabela não existe no destino ou outro erro
+                        error_msg = str(validate_error)
+                        if 'not exist' in error_msg.lower() or 'não existe' in error_msg.lower():
+                            results.append({
+                                "Table": table_name,
+                                "Source": "N/A",
+                                "Destination": "N/A",
+                                "Status": "⚠️ Not in destination"
+                            })
+                        else:
+                            results.append({
+                                "Table": table_name,
+                                "Source": "N/A",
+                                "Destination": "N/A",
+                                "Status": f"❌ Error: {error_msg[:50]}"
+                            })
+                    
+                    progress_bar.progress(min((idx + 1) / len(st.session_state.pg_selected_tables), 1.0))
+                
+                source.close()
+                dest.close()
+                
+                st.markdown("---")
+                import pandas as pd
+                df = pd.DataFrame(results)
+                
+                def highlight_mismatch(row):
+                    if "❌" in row['Status']:
+                        return ['background-color: #ffcccc'] * len(row)
+                    return [''] * len(row)
+                
+                styled_df = df.style.apply(highlight_mismatch, axis=1)
+                st.dataframe(styled_df, width="stretch")
+                
+                total = len(results)
+                matched = sum(1 for r in results if "✅" in r['Status'])
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Tables", total)
+                with col2:
+                    st.metric("Matched", matched)
+                with col3:
+                    st.metric("Mismatched", total - matched)
+                
+                if matched == total:
+                    st.success("🎉 All tables validated successfully!")
+                    st.balloons()
+                else:
+                    st.warning(f"⚠️ {total - matched} table(s) have mismatched row counts")
+                
+            except Exception as e:
+                st.error(f"❌ Validation failed: {str(e)}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
